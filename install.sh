@@ -158,12 +158,37 @@ if [[ "$AIOS_DETECTED" == "true" ]]; then
     # 5. Add @ralph delegation to agent-authority.md
     if [[ -f ".claude/rules/agent-authority.md" ]]; then
         if ! grep -q '@ralph' ".claude/rules/agent-authority.md" 2>/dev/null; then
-            # Insert @ralph section before @aios-master
-            sed -i '/### @aios-master/i\### @ralph (Rex) — Autonomous Execution Control\n\n| Operation | Exclusive? | Details |\n|-----------|-----------|----------|\n| `*run` / `*stop` / `*pause` / `*resume` | YES | Ralph loop lifecycle |\n| `*status` / `*logs` | YES | Loop monitoring |\n| `*config` / `*reset` | YES | Loop configuration |\n| `ralph-plus/*.sh` execution | YES | Script delegation |\n\n| Allowed | Blocked |\n|---------|----------|\n| `git status`, `git log`, `git diff` (read-only) | `git push` (delegate to @devops) |\n| Read/edit `.ralphrc` | `git commit`, `git add` (spawned agents do this) |\n| Read `ralph-plus/logs/`, `progress.txt` | `gh pr create/merge` (delegate to @devops) |\n| Launch `ralph.sh`, `ralph-once.sh`, `ralph-status.sh` | Direct story file edits (spawned agents do this) |\n| Create/remove signal files (`.stop_signal`, `.pause_signal`) | MCP management |\n' ".claude/rules/agent-authority.md"
+            local auth_file=".claude/rules/agent-authority.md"
+            local tmp_file="${auth_file}.tmp"
 
-            # Add autonomous execution flow
-            if ! grep -q 'Autonomous Execution Flow' ".claude/rules/agent-authority.md" 2>/dev/null; then
-                sed -i '/### Epic Flow/{n;n;n;a\\n### Autonomous Execution Flow\n```\n@ralph *run → (spawns @dev + @qa per story) → @devops *push (when complete)\n```\n}' ".claude/rules/agent-authority.md"
+            # Build the @ralph block
+            local ralph_block
+            ralph_block=$(cat <<'RALPH_BLOCK'
+### @ralph (Rex) — Autonomous Execution Control
+
+| Operation | Exclusive? | Details |
+|-----------|-----------|---------|
+| `*run` / `*stop` / `*pause` / `*resume` | YES | Ralph loop lifecycle |
+| `*status` / `*logs` | YES | Loop monitoring |
+| `*config` / `*reset` | YES | Loop configuration |
+| `ralph-plus/*.sh` execution | YES | Script delegation |
+
+| Allowed | Blocked |
+|---------|---------|
+| `git status`, `git log`, `git diff` (read-only) | `git push` (delegate to @devops) |
+| Read/edit `.ralphrc` | `git commit`, `git add` (spawned agents do this) |
+| Read `ralph-plus/logs/`, `progress.txt` | `gh pr create/merge` (delegate to @devops) |
+| Launch `ralph.sh`, `ralph-once.sh`, `ralph-status.sh` | Direct story file edits (spawned agents do this) |
+| Create/remove signal files (`.stop_signal`, `.pause_signal`) | MCP management |
+
+RALPH_BLOCK
+)
+            # Insert before @aios-master
+            awk -v block="$ralph_block" '/^### @aios-master/{print block}1' "$auth_file" > "$tmp_file" && mv "$tmp_file" "$auth_file"
+
+            # Add autonomous execution flow after Epic Flow section
+            if ! grep -q 'Autonomous Execution Flow' "$auth_file" 2>/dev/null; then
+                sed -i '/^## Escalation Rules/i\### Autonomous Execution Flow\n```\n@ralph *run → (spawns @dev + @qa per story) → @devops *push (when complete)\n```\n' "$auth_file"
             fi
 
             echo -e "  ${GREEN}[OK]${NC} Added @ralph to agent-authority.md"
