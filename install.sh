@@ -158,11 +158,11 @@ if [[ "$AIOS_DETECTED" == "true" ]]; then
     # 5. Add @ralph delegation to agent-authority.md
     if [[ -f ".claude/rules/agent-authority.md" ]]; then
         if ! grep -q '@ralph' ".claude/rules/agent-authority.md" 2>/dev/null; then
-            local auth_file=".claude/rules/agent-authority.md"
-            local tmp_file="${auth_file}.tmp"
+            auth_file=".claude/rules/agent-authority.md"
+            tmp_file="${auth_file}.tmp"
 
             # Build the @ralph block
-            local ralph_block
+            ralph_block
             ralph_block=$(cat <<'RALPH_BLOCK'
 ### @ralph (Rex) — Autonomous Execution Control
 
@@ -215,9 +215,9 @@ RALPH_BLOCK
     # 7. Add @ralph to workflow-chains.yaml
     if [[ -f ".aios-core/data/workflow-chains.yaml" ]]; then
         if ! grep -q 'autonomous-loop' ".aios-core/data/workflow-chains.yaml" 2>/dev/null; then
-            local chains_file=".aios-core/data/workflow-chains.yaml"
-            local tmp_file="${chains_file}.tmp"
-            local ralph_chain
+            chains_file=".aios-core/data/workflow-chains.yaml"
+            tmp_file="${chains_file}.tmp"
+            ralph_chain
             ralph_chain=$(cat <<'CHAIN_BLOCK'
 
   # 2.5. Autonomous Execution Loop — RALPH CONTROL
@@ -254,9 +254,9 @@ CHAIN_BLOCK
     # 8. Add @ralph to agent-config-requirements.yaml
     if [[ -f ".aios-core/data/agent-config-requirements.yaml" ]]; then
         if ! grep -q '^\  ralph:' ".aios-core/data/agent-config-requirements.yaml" 2>/dev/null; then
-            local config_file=".aios-core/data/agent-config-requirements.yaml"
-            local tmp_file="${config_file}.tmp"
-            local ralph_config
+            config_file=".aios-core/data/agent-config-requirements.yaml"
+            tmp_file="${config_file}.tmp"
+            ralph_config
             ralph_config=$(cat <<'CONFIG_BLOCK'
 
   ralph:
@@ -302,9 +302,9 @@ CONFIG_BLOCK
     # 10. Add ralph execution mode to story-development-cycle.yaml
     if [[ -f ".aios-core/development/workflows/story-development-cycle.yaml" ]]; then
         if ! grep -q 'mode: ralph' ".aios-core/development/workflows/story-development-cycle.yaml" 2>/dev/null; then
-            local sdc_file=".aios-core/development/workflows/story-development-cycle.yaml"
-            local tmp_file="${sdc_file}.tmp"
-            local ralph_mode
+            sdc_file=".aios-core/development/workflows/story-development-cycle.yaml"
+            tmp_file="${sdc_file}.tmp"
+            ralph_mode
             ralph_mode=$(cat <<'SDC_BLOCK'
     - mode: ralph
       description: >-
