@@ -61,7 +61,10 @@ if [[ -d ".aios-core" ]] && [[ -f ".aios-core/constitution.md" ]]; then
     echo -e "  Mode: ${WHITE}AIOS${NC} (will use @dev, @qa agents)"
 
     # Check for stories
-    story_count=$(find docs/stories -name "*.story.md" 2>/dev/null | wc -l | tr -d ' ')
+    story_count=0
+    if [[ -d "docs/stories" ]]; then
+        story_count=$(find docs/stories -name "*.story.md" 2>/dev/null | wc -l | tr -d ' ')
+    fi
     echo -e "  Stories found: ${WHITE}$story_count${NC}"
 
     AIOS_DETECTED=true
