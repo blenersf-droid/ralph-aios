@@ -197,7 +197,22 @@ RALPH_BLOCK
         fi
     fi
 
-    # 6. Add @ralph to agent-memory-imports.md
+    # 6. Add @ralph delegation to aios-master agent
+    for master_file in ".aios-core/development/agents/aios-master.md" ".claude/commands/AIOS/agents/aios-master.md"; do
+        if [[ -f "$master_file" ]]; then
+            if ! grep -q '@ralph' "$master_file" 2>/dev/null; then
+                # Add to delegated responsibilities
+                sed -i '/AI prompt generation.*@architect/a\- **Autonomous loop execution** → @ralph (\\*run, \\*status, \\*stop)' "$master_file"
+                # Add to specialized agents list
+                sed -i '/Git operations.*@github-devops/a\- Autonomous execution loop → Use @ralph' "$master_file"
+            fi
+        fi
+    done
+    if grep -q '@ralph' ".aios-core/development/agents/aios-master.md" 2>/dev/null; then
+        echo -e "  ${GREEN}[OK]${NC} Added @ralph delegation to aios-master"
+    fi
+
+    # 7. Add @ralph to agent-memory-imports.md
     if [[ -f ".claude/rules/agent-memory-imports.md" ]]; then
         if ! grep -q 'ralph/MEMORY.md' ".claude/rules/agent-memory-imports.md" 2>/dev/null; then
             echo '@import .aios-core/development/agents/ralph/MEMORY.md' >> ".claude/rules/agent-memory-imports.md"
