@@ -49,23 +49,44 @@ It also works **standalone** with `prd.json` for projects without AIOS.
 
 ### With Synkra AIOS (recommended)
 
+Two commands. The installer auto-detects AIOS and registers `@ralph` as a first-class agent across the entire framework — no manual configuration needed.
+
 ```bash
 # 1. Add as submodule
 cd your-aios-project/
 git submodule add https://github.com/blenersf-droid/ralph-aios.git ralph-plus
 
-# 2. Install (auto-detects AIOS, installs @ralph agent)
-./ralph-plus/install.sh
-# → Detects .aios-core/ automatically
-# → Copies @ralph agent definition + MEMORY.md
-# → Patches CLAUDE.md, agent-authority.md, agent-memory-imports.md
-# → Creates .ralphrc from template
+# 2. Install (one command does everything)
+bash ./ralph-plus/install.sh
+```
 
+The installer automatically:
+
+| What | Where |
+|------|-------|
+| Agent definition (Rex persona, 12 commands) | `.aios-core/development/agents/ralph.md` |
+| Agent skill for `@ralph` activation | `.claude/commands/AIOS/agents/ralph.md` |
+| Agent persistent memory | `.aios-core/development/agents/ralph/MEMORY.md` |
+| Agent table registration | `.claude/CLAUDE.md` |
+| Authority & delegation matrix | `.claude/rules/agent-authority.md` |
+| Memory imports | `.claude/rules/agent-memory-imports.md` |
+| Delegation from @aios-master (Orion) | `aios-master.md` (both copies) |
+| Workflow chain for handoff suggestions | `.aios-core/data/workflow-chains.yaml` |
+| Activation performance config (<50ms) | `.aios-core/data/agent-config-requirements.yaml` |
+| Team bundles (fullstack, ide-minimal, no-ui) | `.aios-core/development/agent-teams/*.yaml` |
+| `ralph` execution mode in SDC | `story-development-cycle.yaml` |
+| Workflow selection guide | `.claude/rules/workflow-execution.md` |
+| Loop configuration | `.ralphrc` (from template) |
+| Runtime directory | `.ralph-plus/` (gitignored) |
+
+After install, `@ralph` is indistinguishable from any built-in AIOS agent. All 12 patches are idempotent — running the installer again skips what's already configured.
+
+```bash
 # 3. Make sure you have stories ready
 # (created via @sm *draft)
 
 # 4. Use @ralph agent or run directly
-@ralph          # Conversational control
+@ralph          # Conversational control inside Claude Code
 ./ralph-plus/ralph.sh  # Direct CLI
 ```
 
