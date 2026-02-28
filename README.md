@@ -41,6 +41,8 @@ It also works **standalone** with `prd.json` for projects without AIOS.
 - **Story-Driven** — Every iteration works on exactly one story with acceptance criteria
 - **Backup & Cleanup** — Auto-backup before each iteration, configurable retention
 - **Cross-Platform** — macOS, Linux, WSL2 (POSIX-compatible)
+- **Signal Control** — Stop and pause via signal files (no process kill needed)
+- **@ralph Agent** — Conversational control from within Synkra AIOS
 - **Tested** — 50+ bats-core tests
 
 ## Quick Start
@@ -132,6 +134,41 @@ Each iteration:
 | `--verbose, -v` | Enable verbose logging |
 | `--standalone` | Force standalone mode (ignore AIOS) |
 | `--help, -h` | Show help |
+
+### Signal Files
+
+Control a running loop without killing the process:
+
+```bash
+# Stop loop after current iteration
+touch .ralph-plus/.stop_signal
+
+# Pause loop (resumes when file is removed)
+touch .ralph-plus/.pause_signal
+
+# Resume paused loop
+rm .ralph-plus/.pause_signal
+```
+
+### @ralph Agent (Synkra AIOS)
+
+When using Ralph inside Synkra AIOS, activate the **@ralph** agent (Rex) for conversational control:
+
+```
+@ralph          # Activate agent
+*run            # Launch loop in background
+*run epic 3     # Run only stories from epic 3
+*status         # Progress dashboard
+*stop           # Stop after current iteration
+*pause          # Pause loop
+*resume         # Resume paused loop
+*config         # Show/edit .ralphrc
+*reset          # Reset circuit breaker
+*logs           # Show recent log entries
+*once           # Single iteration (debug)
+```
+
+The @ralph agent delegates to the same bash scripts — it's the conversational interface over the CLI.
 
 ## Configuration (.ralphrc)
 
