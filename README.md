@@ -1,73 +1,111 @@
-# RALPH+ — Autonomous Execution Engine for Claude Code
+# Ralph AIOS — The Autonomous Engine for Synkra AIOS
 
-> A battle-tested loop engine that spawns fresh Claude Code instances to develop software autonomously — with circuit breaker, rate limiting, dual exit gates, and optional AIOS agent orchestration.
+> The Ralph that speaks AIOS. Loops fresh Claude Code instances orchestrating **@dev**, **@qa**, and **@devops** agents through story-driven development — with circuit breaker, dual exit gates, and memory across iterations.
 
-## What is RALPH+?
+## Why Ralph AIOS?
 
-RALPH+ takes the [Ralph technique](https://github.com/snarktank/ralph) (spawning fresh Claude Code instances in a loop) and adds enterprise-grade safety mechanisms. It works in **two modes**:
-
-| Mode | Detection | Stories | How it works |
-|------|-----------|---------|-------------|
-| **Standalone** | Default | `prd.json` | Claude implements stories directly |
-| **AIOS** | `.aios-core/` exists | `docs/stories/*.story.md` | Orchestrates @dev, @qa agents |
+The [original Ralph](https://github.com/snarktank/ralph) spawns Claude Code in a loop. **Ralph AIOS** takes that concept and makes it AIOS-native — it understands stories, activates specialized agents, respects agent authority, follows quality gates, and feeds learnings back into the AIOS memory layer.
 
 ```
-┌────────────────────────────────────┐
-│           RALPH+ Loop              │
-│                                    │
-│  1. Read next story                │
-│  2. Spawn fresh Claude Code        │
-│  3. Implement + quality checks     │
-│  4. Commit if passed               │
-│  5. Update story status            │
-│  6. Record learnings               │
-│  7. Repeat until COMPLETE          │
-└────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│           SYNKRA AIOS               │
+│    Stories · Agents · Workflows     │
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│          RALPH AIOS                 │
+│     Autonomous Execution Engine     │
+│                                     │
+│  1. Read next story from AIOS       │
+│  2. Spawn fresh Claude Code         │
+│  3. @dev implements (yolo mode)     │
+│  4. @qa validates (quality gate)    │
+│  5. Commit if passed                │
+│  6. Update story → Done             │
+│  7. Record learnings in memory      │
+│  8. Next story until COMPLETE       │
+└─────────────────────────────────────┘
 ```
+
+It also works **standalone** with `prd.json` for projects without AIOS.
 
 ## Features
 
-- **Circuit Breaker** — 3-state machine (CLOSED → HALF_OPEN → OPEN) prevents infinite loops
+- **AIOS-Native** — Reads stories, activates @dev/@qa agents, respects Agent Authority
+- **Standalone Fallback** — Works with `prd.json` in any project without AIOS
+- **Circuit Breaker** — 3-state FSM (CLOSED → HALF_OPEN → OPEN) prevents infinite loops
 - **Rate Limiting** — Configurable calls/hour with 5h API limit detection
-- **Dual Exit Gate** — Structural (all stories done?) + Semantic (Claude confirms?) verification
-- **Memory System** — `progress.txt` with codebase patterns carried across iterations
+- **Dual Exit Gate** — Structural (all stories done?) + Semantic (Claude confirms?)
+- **Dual Memory** — `progress.txt` patterns + AIOS agent MEMORY.md sync
 - **Hook System** — pre/post iteration, on-error, on-complete, on-story-complete
+- **Story-Driven** — Every iteration works on exactly one story with acceptance criteria
 - **Backup & Cleanup** — Auto-backup before each iteration, configurable retention
 - **Cross-Platform** — macOS, Linux, WSL2 (POSIX-compatible)
-- **Configurable** — Everything via `.ralphrc`, env vars, or sensible defaults
 - **Tested** — 50+ bats-core tests
 
 ## Quick Start
 
+### With Synkra AIOS (recommended)
+
 ```bash
-# 1. Clone into your project
-git clone https://github.com/blenersf-droid/ralph-plus.git
+# 1. Clone into your AIOS project
+cd your-aios-project/
+git clone https://github.com/blenersf-droid/ralph-aios.git ralph-plus
 
-# 2. Go to your project and run installer
-cd your-project/
-/path/to/ralph-plus/install.sh
+# 2. Install
+./ralph-plus/install.sh
+# → Detects .aios-core/ automatically
+# → Mode: AIOS (will use @dev, @qa agents)
 
-# 3. Create your PRD (pick a template)
-cp /path/to/ralph-plus/templates/prd-fullstack-app.md .
-# Edit and convert to prd.json
+# 3. Make sure you have stories ready
+# (created via @sm *draft)
 
 # 4. Run
-/path/to/ralph-plus/ralph.sh
-```
-
-Or add as a subdirectory:
-
-```bash
-cd your-project/
-cp -r /path/to/ralph-plus/ ./ralph-plus/
-./ralph-plus/install.sh
 ./ralph-plus/ralph.sh
 ```
+
+### Standalone (without AIOS)
+
+```bash
+# 1. Clone
+git clone https://github.com/blenersf-droid/ralph-aios.git ralph-plus
+
+# 2. Install
+cd your-project/
+./ralph-plus/install.sh
+
+# 3. Create prd.json from a template
+cp ralph-plus/templates/prd-fullstack-app.md .
+# Edit and create your prd.json
+
+# 4. Run
+./ralph-plus/ralph.sh --standalone
+```
+
+## How It Works
+
+### AIOS Mode (auto-detected when `.aios-core/` exists)
+
+Each iteration:
+1. Scans `docs/stories/*.story.md` for **Ready** or **In Progress** stories
+2. Spawns a fresh Claude Code instance with story context
+3. Activates **@dev** → `*develop {story-id} yolo` (implements + tests + commits)
+4. Activates **@qa** → `*review {story-id}` (quality gate)
+5. Updates story status → **Done**, marks AC checkboxes ✓
+6. Generates handoff artifacts for agent transitions
+7. Syncs learnings to `progress.txt` + agent `MEMORY.md`
+
+### Standalone Mode
+
+Each iteration:
+1. Reads `prd.json`, picks highest priority story with `passes: false`
+2. Claude implements directly, runs quality checks
+3. Sets `passes: true`, commits, appends learnings
 
 ## Usage
 
 ```bash
-# Run the full loop (default: 20 iterations)
+# Full loop (default: 20 iterations)
 ./ralph-plus/ralph.sh
 
 # With live Claude output
@@ -76,20 +114,15 @@ cp -r /path/to/ralph-plus/ ./ralph-plus/
 # Custom iteration count
 ./ralph-plus/ralph.sh 50
 
-# Single iteration (debug mode)
+# Single iteration (debug)
 ./ralph-plus/ralph-once.sh
 
-# Check progress dashboard
+# Progress dashboard
 ./ralph-plus/ralph-status.sh
 
 # Reset circuit breaker
 ./ralph-plus/ralph.sh --reset
-
-# Force standalone mode (ignore AIOS)
-./ralph-plus/ralph.sh --standalone
 ```
-
-### CLI Options
 
 | Flag | Description |
 |------|-------------|
@@ -97,12 +130,10 @@ cp -r /path/to/ralph-plus/ ./ralph-plus/
 | `--reset` | Reset circuit breaker and counters |
 | `--status` | Show current status and exit |
 | `--verbose, -v` | Enable verbose logging |
-| `--standalone` | Force standalone mode |
+| `--standalone` | Force standalone mode (ignore AIOS) |
 | `--help, -h` | Show help |
 
 ## Configuration (.ralphrc)
-
-Create a `.ralphrc` file in your project root (see `.ralphrc.example`):
 
 ```bash
 # Core
@@ -117,78 +148,49 @@ MAX_CALLS_PER_HOUR=100
 CB_NO_PROGRESS_THRESHOLD=3
 CB_COOLDOWN_MINUTES=30
 
-# Backup
-MAX_BACKUPS=10
+# AIOS Integration
+AIOS_DEV_MODE=yolo          # yolo|interactive|preflight
+AIOS_QA_ENABLED=true
+AIOS_PUSH_ENABLED=false     # Auto-push via @devops
+AIOS_MEMORY_SYNC=true
 
 # Hooks
 HOOK_ON_COMPLETE=./hooks/notify.sh
 ```
 
-**Precedence:** Environment vars > `.ralphrc` > defaults
-
-## prd.json Format
-
-```json
-{
-  "project": "MyApp",
-  "branchName": "ralph/feature-name",
-  "description": "Feature description",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Add user authentication",
-      "description": "Implement login/signup flow",
-      "acceptanceCriteria": ["Login form works", "JWT tokens issued"],
-      "priority": 1,
-      "passes": false,
-      "notes": ""
-    }
-  ]
-}
-```
-
-## PRD Templates
-
-| Template | Project Type |
-|----------|-------------|
-| `prd-fullstack-app.md` | React/Next.js web apps |
-| `prd-api-service.md` | APIs and microservices |
-| `prd-chrome-extension.md` | Chrome extensions |
-| `prd-saas.md` | SaaS platforms |
-| `prd-automation.md` | Scripts and automations |
+See `.ralphrc.example` for all options. **Precedence:** env vars > `.ralphrc` > defaults
 
 ## Architecture
 
 ```
-ralph-plus/
+ralph-aios/
 ├── ralph.sh                 # Main loop entry point
 ├── ralph-once.sh            # Single iteration (debug)
 ├── ralph-status.sh          # Progress dashboard
 ├── install.sh               # Project installer
-├── .ralphrc.example         # Configuration template
 ├── CLAUDE.md                # Agent instructions per iteration
 ├── config/
 │   ├── defaults.sh          # Default configuration
 │   ├── circuit-breaker.sh   # 3-state circuit breaker
-│   └── aios-bridge.sh       # AIOS integration layer
+│   └── aios-bridge.sh       # AIOS story reader/writer
 ├── lib/
-│   ├── loop.sh              # Core loop logic
+│   ├── loop.sh              # Core iteration logic
 │   ├── safety.sh            # Rate limiting, validation, analysis
-│   ├── memory.sh            # Progress tracking & patterns
+│   ├── memory.sh            # progress.txt + AIOS Memory Layer
 │   ├── monitor.sh           # Logging & display
 │   └── hooks.sh             # Lifecycle hooks
-├── templates/               # PRD templates (5 types)
-├── docs/                    # Detailed documentation
-│   ├── ARCHITECTURE.md
-│   ├── RESEARCH.md
-│   └── AIOS-INTEGRATION.md
+├── templates/               # 5 PRD templates
+├── docs/
+│   ├── ARCHITECTURE.md      # Design & flow diagrams
+│   ├── RESEARCH.md          # Phase 1 research on Ralph variants
+│   └── AIOS-INTEGRATION.md  # Dual-mode integration guide
 └── tests/
-    └── ralph.bats           # bats-core test suite
+    └── ralph.bats           # 50+ bats-core tests
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design documentation.
-
 ## Circuit Breaker
+
+Based on Michael Nygard's "Release It!" pattern:
 
 ```
       ┌──────────┐
@@ -203,22 +205,36 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design documentati
     │       │        │
   CLOSED   OPEN     OPEN
             │
-   cooldown │ elapsed
+   cooldown │ >= 30min
             ▼
-         HALF_OPEN
+         HALF_OPEN (retry)
 ```
 
-## AIOS Integration (Optional)
+## AIOS Agent Flow
 
-When RALPH+ detects `.aios-core/` in your project, it automatically switches to AIOS mode:
+```
+Ralph AIOS Iteration
+├── @dev (via *develop {story-id} yolo)
+│   ├── Read story acceptance criteria
+│   ├── Implement code
+│   ├── Run quality checks (lint, typecheck, test)
+│   └── Commit with conventional message
+├── @qa (via *review {story-id})
+│   ├── Validate implementation vs AC
+│   ├── Check test coverage
+│   └── Verdict: PASS / FAIL
+└── @devops (via *push) — EXCLUSIVE authority
+```
 
-1. Reads stories from `docs/stories/*.story.md`
-2. Activates @dev agent → `*develop {story} yolo`
-3. Activates @qa agent → `*review {story}`
-4. Generates handoff artifacts between agent transitions
-5. Syncs learnings to agent MEMORY.md
+## PRD Templates
 
-See [docs/AIOS-INTEGRATION.md](docs/AIOS-INTEGRATION.md) for details.
+| Template | Project Type |
+|----------|-------------|
+| `prd-fullstack-app.md` | React/Next.js web apps |
+| `prd-api-service.md` | APIs and microservices |
+| `prd-chrome-extension.md` | Chrome extensions |
+| `prd-saas.md` | SaaS platforms |
+| `prd-automation.md` | Scripts and automations |
 
 ## Tests
 
@@ -227,7 +243,7 @@ See [docs/AIOS-INTEGRATION.md](docs/AIOS-INTEGRATION.md) for details.
 brew install bats-core  # macOS
 apt install bats        # Linux
 
-# Run tests
+# Run
 bats tests/ralph.bats
 ```
 
@@ -237,14 +253,15 @@ bats tests/ralph.bats
 - jq 1.6+
 - git 2.0+
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 2.0+
-- tmux 3.0+ (optional, for monitoring)
+- tmux 3.0+ (optional)
 
 ## Credits
 
-Built on the shoulders of:
+Built on:
 - [snarktank/ralph](https://github.com/snarktank/ralph) — Original autonomous loop technique
 - [frankbria/ralph-claude-code](https://github.com/frankbria/ralph-claude-code) — Circuit breaker, rate limiting, response analysis
 - [RobinOppenstam/claude-ralph](https://github.com/RobinOppenstam/claude-ralph) — ralph-once.sh, ralph-status.sh
+- [Synkra AIOS](https://github.com/SynkraAI/aios-core) — AI-Orchestrated System framework
 
 ## License
 
