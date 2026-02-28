@@ -1,0 +1,57 @@
+# ═══════════════════════════════════════════════════════════════
+# RALPH+ Configuration File
+# Copy to .ralphrc in your project root and customize
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Core Loop ────────────────────────────────────────────────
+# MAX_ITERATIONS=20              # Maximum loop iterations
+# SLEEP_BETWEEN_ITERATIONS=3     # Seconds between iterations
+# MAX_RETRIES_PER_STORY=3        # Max retries before marking blocked
+# CLAUDE_TIMEOUT_MINUTES=15      # Timeout per Claude Code invocation
+# CLAUDE_CODE_CMD=claude         # Claude Code CLI command
+
+# ─── Rate Limiting ────────────────────────────────────────────
+# MAX_CALLS_PER_HOUR=100         # API calls per hour limit
+# API_LIMIT_SLEEP_MINUTES=60     # Sleep duration on API limit
+
+# ─── Circuit Breaker ──────────────────────────────────────────
+# CB_NO_PROGRESS_THRESHOLD=3     # Loops without progress to open
+# CB_SAME_ERROR_THRESHOLD=5      # Same error loops to open
+# CB_PERMISSION_DENIAL_THRESHOLD=2 # Permission denials to open
+# CB_COOLDOWN_MINUTES=30         # Auto-recovery cooldown
+# CB_AUTO_RESET=false            # Reset on startup
+
+# ─── AIOS Integration ─────────────────────────────────────────
+# AIOS_ENABLED=auto              # auto|true|false
+# AIOS_STORY_DIR=docs/stories    # AIOS stories directory
+# AIOS_DEV_MODE=yolo             # yolo|interactive|preflight
+# AIOS_QA_ENABLED=true           # Run QA gate after dev
+# AIOS_PUSH_ENABLED=false        # Auto-push via @devops
+# AIOS_MEMORY_SYNC=true          # Sync learnings to MEMORY.md
+# AIOS_HANDOFF_DIR=.aios/handoffs # Handoff artifacts directory
+
+# ─── Backup ──────────────────────────────────────────────────────
+# MAX_BACKUPS=10                  # Keep only the last N backups
+
+# ─── Paths ─────────────────────────────────────────────────────
+# RALPH_DIR=.ralph-plus          # RALPH+ working directory
+# PROGRESS_FILE=progress.txt     # Progress log file
+# PRD_FILE=prd.json              # PRD file (standalone mode)
+
+# ─── Exit Detection ───────────────────────────────────────────
+# EXIT_METHOD=dual               # dual|structural|semantic
+
+# ─── Monitoring ────────────────────────────────────────────────
+# LIVE_OUTPUT=false              # Show Claude output in real-time
+# USE_TMUX=false                 # Enable tmux monitoring
+# VERBOSE=false                  # Verbose logging
+
+# ─── Hooks ──────────────────────────────────────────────────────
+# Hook scripts receive context via environment variables:
+#   RALPH_ITERATION, RALPH_STORY_ID, RALPH_MODE, etc.
+#
+# HOOK_PRE_ITERATION=            # Script to run before each iteration
+# HOOK_POST_ITERATION=           # Script to run after each iteration
+# HOOK_ON_ERROR=                 # Script to run on error
+# HOOK_ON_COMPLETE=              # Script to run when all stories done
+# HOOK_ON_STORY_COMPLETE=        # Script to run when a story completes
