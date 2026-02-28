@@ -162,7 +162,6 @@ if [[ "$AIOS_DETECTED" == "true" ]]; then
             tmp_file="${auth_file}.tmp"
 
             # Build the @ralph block
-            ralph_block
             ralph_block=$(cat <<'RALPH_BLOCK'
 ### @ralph (Rex) — Autonomous Execution Control
 
@@ -217,7 +216,6 @@ RALPH_BLOCK
         if ! grep -q 'autonomous-loop' ".aios-core/data/workflow-chains.yaml" 2>/dev/null; then
             chains_file=".aios-core/data/workflow-chains.yaml"
             tmp_file="${chains_file}.tmp"
-            ralph_chain
             ralph_chain=$(cat <<'CHAIN_BLOCK'
 
   # 2.5. Autonomous Execution Loop — RALPH CONTROL
@@ -256,7 +254,6 @@ CHAIN_BLOCK
         if ! grep -q '^\  ralph:' ".aios-core/data/agent-config-requirements.yaml" 2>/dev/null; then
             config_file=".aios-core/data/agent-config-requirements.yaml"
             tmp_file="${config_file}.tmp"
-            ralph_config
             ralph_config=$(cat <<'CONFIG_BLOCK'
 
   ralph:
@@ -304,7 +301,6 @@ CONFIG_BLOCK
         if ! grep -q 'mode: ralph' ".aios-core/development/workflows/story-development-cycle.yaml" 2>/dev/null; then
             sdc_file=".aios-core/development/workflows/story-development-cycle.yaml"
             tmp_file="${sdc_file}.tmp"
-            ralph_mode
             ralph_mode=$(cat <<'SDC_BLOCK'
     - mode: ralph
       description: >-
