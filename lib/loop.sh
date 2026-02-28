@@ -171,6 +171,33 @@ run_loop() {
     local current_retry=0
 
     for iteration in $(seq 1 "$MAX_ITERATIONS"); do
+        # Check stop signal
+        if [[ -f "${RALPH_DIR}/.stop_signal" ]]; then
+            rm -f "${RALPH_DIR}/.stop_signal"
+            log INFO "Stop signal received. Halting loop after iteration $((iteration - 1))."
+            echo -e "${YELLOW}[RALPH] Stop signal received. Loop halted.${NC}"
+            hook_on_complete "$((iteration - 1))" "$mode"
+            return 0
+        fi
+
+        # Check pause signal
+        if [[ -f "${RALPH_DIR}/.pause_signal" ]]; then
+            log INFO "Pause signal received. Waiting for resume..."
+            echo -e "${YELLOW}[RALPH] Paused. Remove ${RALPH_DIR}/.pause_signal or use @ralph *resume to continue.${NC}"
+            while [[ -f "${RALPH_DIR}/.pause_signal" ]]; do
+                sleep 5
+                # Also check for stop signal while paused
+                if [[ -f "${RALPH_DIR}/.stop_signal" ]]; then
+                    rm -f "${RALPH_DIR}/.stop_signal" "${RALPH_DIR}/.pause_signal"
+                    log INFO "Stop signal received while paused. Halting loop."
+                    echo -e "${YELLOW}[RALPH] Stop signal received while paused. Loop halted.${NC}"
+                    return 0
+                fi
+            done
+            log INFO "Resumed from pause."
+            echo -e "${GREEN}[RALPH] Resumed.${NC}"
+        fi
+
         # Pre-checks
         if ! cb_can_execute; then
             cb_show_status
