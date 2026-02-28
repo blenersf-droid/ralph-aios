@@ -50,20 +50,23 @@ It also works **standalone** with `prd.json` for projects without AIOS.
 ### With Synkra AIOS (recommended)
 
 ```bash
-# 1. Clone into your AIOS project
+# 1. Add as submodule
 cd your-aios-project/
-git clone https://github.com/blenersf-droid/ralph-aios.git ralph-plus
+git submodule add https://github.com/blenersf-droid/ralph-aios.git ralph-plus
 
-# 2. Install
+# 2. Install (auto-detects AIOS, installs @ralph agent)
 ./ralph-plus/install.sh
 # → Detects .aios-core/ automatically
-# → Mode: AIOS (will use @dev, @qa agents)
+# → Copies @ralph agent definition + MEMORY.md
+# → Patches CLAUDE.md, agent-authority.md, agent-memory-imports.md
+# → Creates .ralphrc from template
 
 # 3. Make sure you have stories ready
 # (created via @sm *draft)
 
-# 4. Run
-./ralph-plus/ralph.sh
+# 4. Use @ralph agent or run directly
+@ralph          # Conversational control
+./ralph-plus/ralph.sh  # Direct CLI
 ```
 
 ### Standalone (without AIOS)
@@ -204,8 +207,11 @@ ralph-aios/
 ├── ralph.sh                 # Main loop entry point
 ├── ralph-once.sh            # Single iteration (debug)
 ├── ralph-status.sh          # Progress dashboard
-├── install.sh               # Project installer
+├── install.sh               # Project installer (auto-installs @ralph agent)
 ├── CLAUDE.md                # Agent instructions per iteration
+├── agent/
+│   ├── ralph.md             # @ralph agent definition (copied by install.sh)
+│   └── MEMORY.md            # Agent memory template
 ├── config/
 │   ├── defaults.sh          # Default configuration
 │   ├── circuit-breaker.sh   # 3-state circuit breaker
