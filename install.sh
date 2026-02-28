@@ -212,7 +212,134 @@ RALPH_BLOCK
         echo -e "  ${GREEN}[OK]${NC} Added @ralph delegation to aios-master"
     fi
 
-    # 7. Add @ralph to agent-memory-imports.md
+    # 7. Add @ralph to workflow-chains.yaml
+    if [[ -f ".aios-core/data/workflow-chains.yaml" ]]; then
+        if ! grep -q 'autonomous-loop' ".aios-core/data/workflow-chains.yaml" 2>/dev/null; then
+            local chains_file=".aios-core/data/workflow-chains.yaml"
+            local tmp_file="${chains_file}.tmp"
+            local ralph_chain
+            ralph_chain=$(cat <<'CHAIN_BLOCK'
+
+  # 2.5. Autonomous Execution Loop — RALPH CONTROL
+  - id: autonomous-loop
+    name: Autonomous Execution Loop
+    description: Continuous autonomous story development controlled by @ralph
+    chain:
+      - step: 1
+        agent: "@ralph"
+        command: "*run"
+        output: Loop launched (spawns @dev + @qa per story)
+        condition: Stories in Ready status, .ralphrc configured
+      - step: 2
+        agent: "@ralph"
+        command: "*status"
+        output: Progress dashboard (stories, circuit breaker, rate limit)
+        condition: Loop is running
+      - step: 3
+        agent: "@devops"
+        command: "*push"
+        task: github-devops-pre-push-quality-gate.md
+        output: Code pushed to remote
+        condition: All stories complete, loop finished
+
+CHAIN_BLOCK
+)
+            awk -v block="$ralph_chain" '/# 3\. Spec Pipeline/{print block}1' "$chains_file" > "$tmp_file" && mv "$tmp_file" "$chains_file"
+            echo -e "  ${GREEN}[OK]${NC} Added @ralph chain to workflow-chains.yaml"
+        else
+            echo -e "  ${CYAN}[SKIP]${NC} @ralph already in workflow-chains.yaml"
+        fi
+    fi
+
+    # 8. Add @ralph to agent-config-requirements.yaml
+    if [[ -f ".aios-core/data/agent-config-requirements.yaml" ]]; then
+        if ! grep -q '^\  ralph:' ".aios-core/data/agent-config-requirements.yaml" 2>/dev/null; then
+            local config_file=".aios-core/data/agent-config-requirements.yaml"
+            local tmp_file="${config_file}.tmp"
+            local ralph_config
+            ralph_config=$(cat <<'CONFIG_BLOCK'
+
+  ralph:
+    config_sections:
+      - ralphrcLocation
+      - dataLocation
+    files_loaded:
+      - path: .ralphrc
+        lazy: false
+        size: 2KB
+      - path: ralph-plus/progress.txt
+        lazy: false
+        size: variable
+    lazy_loading:
+      ralph_logs: true         # Load only on *logs command
+    performance_target: <50ms
+
+CONFIG_BLOCK
+)
+            awk -v block="$ralph_config" '/MEDIUM PRIORITY AGENTS/{print block}1' "$config_file" > "$tmp_file" && mv "$tmp_file" "$config_file"
+            echo -e "  ${GREEN}[OK]${NC} Added @ralph to agent-config-requirements.yaml"
+        else
+            echo -e "  ${CYAN}[SKIP]${NC} @ralph already in agent-config-requirements.yaml"
+        fi
+    fi
+
+    # 9. Add @ralph to agent team bundles
+    for team_file in ".aios-core/development/agent-teams/team-fullstack.yaml" \
+                     ".aios-core/development/agent-teams/team-ide-minimal.yaml" \
+                     ".aios-core/development/agent-teams/team-no-ui.yaml"; do
+        if [[ -f "$team_file" ]]; then
+            if ! grep -q 'ralph' "$team_file" 2>/dev/null; then
+                sed -i '/^workflows:/i\  - ralph' "$team_file"
+            fi
+        fi
+    done
+    if [[ -f ".aios-core/development/agent-teams/team-fullstack.yaml" ]]; then
+        if grep -q 'ralph' ".aios-core/development/agent-teams/team-fullstack.yaml" 2>/dev/null; then
+            echo -e "  ${GREEN}[OK]${NC} Added @ralph to agent team bundles"
+        fi
+    fi
+
+    # 10. Add ralph execution mode to story-development-cycle.yaml
+    if [[ -f ".aios-core/development/workflows/story-development-cycle.yaml" ]]; then
+        if ! grep -q 'mode: ralph' ".aios-core/development/workflows/story-development-cycle.yaml" 2>/dev/null; then
+            local sdc_file=".aios-core/development/workflows/story-development-cycle.yaml"
+            local tmp_file="${sdc_file}.tmp"
+            local ralph_mode
+            ralph_mode=$(cat <<'SDC_BLOCK'
+    - mode: ralph
+      description: >-
+        Execução autônoma em loop via @ralph — spawna instâncias fresh do Claude Code
+        que executam o SDC completo (create → validate → implement → QA) story por story,
+        com circuit breaker, rate limiting e memory cross-iteration.
+      prompts: 0
+      agent: ralph
+      command: "*run"
+      notes: |
+        Ativação: @ralph *run
+        Monitoramento: @ralph *status
+        Pausa: @ralph *pause / *resume
+        Parada: @ralph *stop
+        Configuração: .ralphrc
+SDC_BLOCK
+)
+            awk -v block="$ralph_mode" '/prompts: "10-15"/{print; print block; next}1' "$sdc_file" > "$tmp_file" && mv "$tmp_file" "$sdc_file"
+            echo -e "  ${GREEN}[OK]${NC} Added ralph mode to story-development-cycle.yaml"
+        else
+            echo -e "  ${CYAN}[SKIP]${NC} ralph mode already in story-development-cycle.yaml"
+        fi
+    fi
+
+    # 11. Add @ralph to workflow-execution.md selection guide
+    if [[ -f ".claude/rules/workflow-execution.md" ]]; then
+        if ! grep -q '@ralph' ".claude/rules/workflow-execution.md" 2>/dev/null; then
+            sed -i '/Simple bug fix.*SDC only/a\| Batch stories autonomously | @ralph *run (SDC in loop, zero interaction) |\n| Monitor autonomous progress | @ralph *status |' ".claude/rules/workflow-execution.md"
+            echo -e "  ${GREEN}[OK]${NC} Added @ralph to workflow-execution.md"
+        else
+            echo -e "  ${CYAN}[SKIP]${NC} @ralph already in workflow-execution.md"
+        fi
+    fi
+
+    # 12. Add @ralph to agent-memory-imports.md
     if [[ -f ".claude/rules/agent-memory-imports.md" ]]; then
         if ! grep -q 'ralph/MEMORY.md' ".claude/rules/agent-memory-imports.md" 2>/dev/null; then
             echo '@import .aios-core/development/agents/ralph/MEMORY.md' >> ".claude/rules/agent-memory-imports.md"
