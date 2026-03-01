@@ -100,8 +100,9 @@ echo -e "  ${GREEN}[OK]${NC} .ralph-plus/ directory created"
 # Make scripts executable
 chmod +x "$RALPH_PLUS_DIR/ralph.sh" 2>/dev/null || true
 chmod +x "$RALPH_PLUS_DIR/ralph-once.sh" 2>/dev/null || true
+chmod +x "$RALPH_PLUS_DIR/ralph-parallel.sh" 2>/dev/null || true
 chmod +x "$RALPH_PLUS_DIR/ralph-status.sh" 2>/dev/null || true
-echo -e "  ${GREEN}[OK]${NC} Scripts made executable"
+echo -e "  ${GREEN}[OK]${NC} Scripts made executable (sequential + parallel)"
 
 # Add to .gitignore
 if [[ -f ".gitignore" ]]; then
@@ -357,8 +358,17 @@ echo "    1. Edit .ralphrc to customize settings"
 echo "    2. Run: ${WHITE}$RALPH_PLUS_DIR/ralph-status.sh${NC}  (check status)"
 if [[ "$AIOS_DETECTED" == "true" ]]; then
 echo "    3. Use: ${WHITE}@ralph${NC}                          (agent mode)"
-echo "    4. Or:  ${WHITE}$RALPH_PLUS_DIR/ralph.sh${NC}         (direct CLI)"
+echo "    4. Or:  ${WHITE}$RALPH_PLUS_DIR/ralph.sh${NC}         (sequential loop)"
+echo "    5. Or:  ${WHITE}$RALPH_PLUS_DIR/ralph-parallel.sh --config waves.conf${NC}"
+echo "                                            (parallel execution)"
 else
 echo "    3. Run: ${WHITE}$RALPH_PLUS_DIR/ralph.sh${NC}         (start loop)"
+echo "    4. Or:  ${WHITE}$RALPH_PLUS_DIR/ralph-parallel.sh --config waves.conf${NC}"
+echo "                                            (parallel execution)"
 fi
+echo ""
+echo "  Execution modes:"
+echo "    Sequential: Stories run one-at-a-time with circuit breaker"
+echo "    Parallel:   Stories grouped in waves, run simultaneously"
+echo "                Create a waves.conf file with story IDs per wave"
 echo ""
