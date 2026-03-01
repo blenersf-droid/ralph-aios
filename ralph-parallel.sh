@@ -277,7 +277,7 @@ PROMPTEOF
 }
 
 # ─── Fast story reader (single jq call) ─────────────────────────
-# Builds a JSONL temp file first, then wraps in array with one jq call
+# Builds a TSV temp file first, then converts to JSON array with one jq call
 read_aios_stories_fast() {
     local story_dir="${AIOS_STORY_DIR:-docs/stories}"
     local jsonl_tmp
@@ -289,36 +289,29 @@ read_aios_stories_fast() {
         return
     fi
 
-    while IFS= read -r -d '' story_file; do
-        local content
-        content=$(cat "$story_file")
+    # Use plain find (no -print0) for Git Bash compatibility
+    while IFS= read -r story_file; do
+        [[ -z "$story_file" ]] && continue
 
-        # Parse story metadata (POSIX-compatible)
-        local story_id story_title story_status story_epic
-        story_id=$(echo "$content" | sed -n 's/^Story ID:[[:space:]]*//p' | head -1 | tr -d '[:space:]')
-        if [[ -z "$story_id" ]]; then
-            story_id=$(echo "$content" | sed -n 's/^# Story \([^:]*\):.*/\1/p' | head -1 | tr -d '[:space:]')
-        fi
-        story_title=$(echo "$content" | sed -n 's/^# Story [^:]*:[[:space:]]*//p' | head -1)
-        if [[ -z "$story_title" ]]; then
-            story_title=$(echo "$content" | head -1 | sed 's/^# //')
-        fi
-        story_status=$(echo "$content" | sed -n 's/^.*Status:[[:space:]]*//p' | head -1 | tr -d '[:space:]')
-        story_epic=$(echo "$content" | sed -n 's/^.*Epic:[[:space:]]*//p' | head -1 | tr -d '[:space:]')
+        local story_id story_title story_status
+        story_id=$(sed -n 's/^# Story \([^:]*\):.*/\1/p' "$story_file" | head -1 | tr -d '[:space:]')
+        [[ -z "$story_id" ]] && story_id=$(sed -n 's/^Story ID:[[:space:]]*//p' "$story_file" | head -1 | tr -d '[:space:]')
+        story_title=$(sed -n 's/^# Story [^:]*:[[:space:]]*//p' "$story_file" | head -1)
+        [[ -z "$story_title" ]] && story_title=$(head -1 "$story_file" | sed 's/^# //')
+        story_status=$(grep -m1 'Status:' "$story_file" | sed 's/.*Status:[[:space:]]*//' | tr -d '[:space:]')
 
         local ac_total ac_done
-        ac_total=$(echo "$content" | grep -c '^\s*- \[.\] ' 2>/dev/null || true)
+        ac_total=$(grep -c '^\s*- \[.\] ' "$story_file" 2>/dev/null || true)
         [[ -z "$ac_total" ]] && ac_total=0
-        ac_done=$(echo "$content" | grep -c '^\s*- \[x\] ' 2>/dev/null || true)
+        ac_done=$(grep -c '^\s*- \[x\] ' "$story_file" 2>/dev/null || true)
         [[ -z "$ac_done" ]] && ac_done=0
 
         [[ -z "$story_id" ]] && continue
 
-        # Write tab-separated line (no jq needed per story)
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$story_id" "$story_title" "${story_status:-Draft}" "$story_file" "${story_epic:-}" "${ac_total:-0}" "${ac_done:-0}" \
+        printf '%s\t%s\t%s\t%s\t\t%s\t%s\n' \
+            "$story_id" "$story_title" "${story_status:-Draft}" "$story_file" "${ac_total:-0}" "${ac_done:-0}" \
             >> "$jsonl_tmp"
-    done < <(find "$story_dir" -name "*.story.md" -print0 2>/dev/null)
+    done < <(find "$story_dir" -name "*.story.md" 2>/dev/null)
 
     # Single jq call to convert TSV to JSON array
     jq -Rsn '
@@ -458,10 +451,48 @@ run_story_parallel() {
 
     log_parallel INFO "Spawning Claude for story $story_id..."
 
-    # Spawn Claude Code
+    # Build agent system prompt (compact @dev persona for --print mode)
+    local agent_prompt
+    agent_prompt=$(cat << 'AGENTEOF'
+You are Dex (@dev), Expert Senior Software Engineer. Persona: pragmatic, concise, solution-focused.
+
+## Core Principles
+- Story file has ALL info needed. NEVER load PRD/architecture docs unless directed in story notes
+- ONLY update story file sections: Task checkboxes, File List, Status
+- Follow existing code patterns in squads/ — check before creating new components
+- Use TypeScript with proper types, absolute imports, no `any` unless necessary
+- Install packages with `cd squads && npm install <pkg> -w apps/web` (or appropriate workspace)
+
+## Development Workflow
+1. Read story file completely — understand ACs, tasks, subtasks, Dev Notes
+2. Implement each task sequentially, checking off subtasks
+3. Follow the coding standards from the tech preset (Next.js 16+, React, TypeScript, Tailwind CSS)
+4. After implementation, run quality checks (typecheck, lint, tests)
+5. Update story checkboxes and status
+
+## Quality Standards
+- All code must pass `npx tsc --noEmit` before marking complete
+- All code must pass linting before marking complete
+- Write tests for testable logic (calculators, utils, hooks)
+- Handle loading states, error states, and empty states in UI
+- No hardcoded strings, no unused imports, no dead code
+- Components must have proper TypeScript props interfaces
+
+## QA Self-Review (as @qa Quinn)
+After implementation, review your own work critically:
+- Does each AC actually work as described, not just compile?
+- Are edge cases handled?
+- Is error handling complete for async operations?
+- Are there missing loading/empty states?
+- Would a code reviewer find issues?
+AGENTEOF
+)
+
+    # Spawn Claude Code with @dev agent persona
     local output exit_code
     output=$(echo "$prompt" | timeout "$timeout_seconds" \
         "$CLAUDE_CODE_CMD" --print --dangerously-skip-permissions \
+        --append-system-prompt "$agent_prompt" \
         2>&1) || true
     exit_code=$?
 

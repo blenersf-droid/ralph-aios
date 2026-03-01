@@ -47,6 +47,10 @@ run_iteration() {
     # Spawn Claude Code
     log INFO "Spawning Claude Code (timeout: ${CLAUDE_TIMEOUT_MINUTES}min)..."
 
+    # Compact @dev agent persona for --print mode
+    local agent_system_prompt
+    agent_system_prompt="You are Dex (@dev), Expert Senior Software Engineer. Persona: pragmatic, concise, solution-focused. Core: story file has ALL info needed, follow existing patterns in squads/, use TypeScript with proper types, absolute imports. Quality: all code must pass typecheck and lint. QA: self-review each AC critically before marking complete."
+
     local output exit_code
     local output_file="${RALPH_DIR}/output_iter${iteration}.log"
 
@@ -54,12 +58,14 @@ run_iteration() {
         # Live output mode: tee to file and stderr
         output=$(echo "$prompt" | timeout "$timeout_seconds" \
             "$CLAUDE_CODE_CMD" --print --dangerously-skip-permissions \
+            --append-system-prompt "$agent_system_prompt" \
             2>&1 | tee "$output_file" /dev/stderr) || true
         exit_code=${PIPESTATUS[0]:-$?}
     else
         # Quiet mode: capture only
         output=$(echo "$prompt" | timeout "$timeout_seconds" \
             "$CLAUDE_CODE_CMD" --print --dangerously-skip-permissions \
+            --append-system-prompt "$agent_system_prompt" \
             2>&1) || true
         exit_code=$?
         echo "$output" > "$output_file"
