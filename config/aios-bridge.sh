@@ -61,8 +61,10 @@ read_aios_stories() {
 
         # Count acceptance criteria
         local ac_total ac_done
-        ac_total=$(echo "$content" | grep -c '^\s*- \[.\] ' 2>/dev/null || echo 0)
-        ac_done=$(echo "$content" | grep -c '^\s*- \[x\] ' 2>/dev/null || echo 0)
+        ac_total=$(echo "$content" | grep -c '^\s*- \[.\] ' 2>/dev/null || true)
+        [[ -z "$ac_total" ]] && ac_total=0
+        ac_done=$(echo "$content" | grep -c '^\s*- \[x\] ' 2>/dev/null || true)
+        [[ -z "$ac_done" ]] && ac_done=0
 
         # Skip if no valid ID
         [[ -z "$story_id" ]] && continue
@@ -249,28 +251,50 @@ $learnings
 
 ## Instructions
 
-### Phase 1: Implementation
+You are running in non-interactive mode (--print). Do NOT try to activate agents with @ or run * commands. Execute all work directly.
+
+### Phase 1: Preparation
 1. Read the complete story file at \`$story_path\`
-2. Activate the @dev agent
-3. Execute: \`*develop $story_id yolo\`
-4. The @dev agent will:
-   - Read acceptance criteria from the story
-   - Implement each criterion
-   - Run quality checks (lint, typecheck, test)
-   - Commit changes with conventional message
-   - Update the Dev Agent Record section
+2. Read the acceptance criteria (AC) and tasks/subtasks carefully
+3. Read the Dev Notes section for libraries, patterns, and file references
+4. Check existing code in \`squads/\` for patterns to follow — never create from scratch when similar exists
 
-### Phase 2: Quality Gate
-5. After implementation, activate @qa agent
-6. Execute: \`*review $story_id\`
-7. If QA identifies issues:
-   - Activate @dev again
-   - Fix the issues identified by @qa
-   - Re-run quality checks
+### Phase 2: Implementation
+5. Install required packages (if any) using \`cd squads && npm install <pkg> -w apps/web\` or the appropriate workspace
+6. Implement each acceptance criterion, one at a time
+7. Follow existing code patterns in the project (check layout.tsx, existing components, etc.)
+8. Use TypeScript with proper types — no \`any\` unless absolutely necessary
+9. Use absolute imports as per project convention
+10. After implementing, commit with: \`feat: [Story $story_id] - description\`
 
-### Phase 3: Completion
-8. Once QA passes, update the story status to "Done"
-9. Mark all acceptance criteria checkboxes as [x]
+### Phase 3: Quality Gate (MANDATORY — do NOT skip)
+11. Run typecheck: \`cd squads && npx tsc --noEmit -p apps/web/tsconfig.json\`
+    - If errors: FIX them before proceeding
+12. Run lint: \`cd squads && npx eslint apps/web/src --ext .ts,.tsx --max-warnings 0 2>/dev/null || npx next lint --dir apps/web 2>/dev/null\`
+    - If errors: FIX them before proceeding
+13. If the story has testable logic (calculators, utils, hooks):
+    - Write unit tests in the appropriate package
+    - Run tests: \`cd squads && npx jest --passWithNoTests\`
+
+### Phase 4: QA Self-Review (MANDATORY — evaluate before marking complete)
+14. For EACH acceptance criterion in the story, verify:
+    - [ ] Is it actually implemented? (not just partially)
+    - [ ] Does it work as described? (not just compiles)
+    - [ ] Are edge cases handled?
+15. Check for common issues:
+    - [ ] No hardcoded strings that should be configurable
+    - [ ] No missing error handling on async operations
+    - [ ] No missing loading/empty states in UI components
+    - [ ] No unused imports or dead code
+    - [ ] Components have proper TypeScript props interfaces
+16. If any AC is NOT met, go back to Phase 2 and fix it
+
+### Phase 5: Completion
+17. Update the story file:
+    - Mark completed task checkboxes: \`- [ ]\` → \`- [x]\`
+    - Change status line to: \`Status: Done\`
+18. Create final commit: \`feat: [Story $story_id] - complete implementation\`
+    - Or amend previous commit if only minor fixes
 
 ## Response Format
 
@@ -282,16 +306,25 @@ After completing your work, output a JSON status block:
   "story_id": "$story_id",
   "files_modified": 0,
   "work_type": "implementation",
-  "summary": "Brief description of what was done"
+  "summary": "Brief description of what was done",
+  "quality_gate": {
+    "typecheck": "PASS|FAIL",
+    "lint": "PASS|FAIL",
+    "tests": "PASS|FAIL|SKIPPED",
+    "ac_coverage": "7/7"
+  }
 }
 \`\`\`
 
 ## Rules
 - Work on ONLY this story per iteration
-- Do NOT skip quality checks
-- Commit frequently with conventional messages
-- Append learnings to progress.txt
-- If blocked, report status as BLOCKED with reason
+- Do NOT mark COMPLETE unless ALL quality gates pass
+- Do NOT skip Phase 3 (Quality Gate) or Phase 4 (QA Self-Review)
+- Commit with conventional messages: \`feat: [Story $story_id] - description\`
+- If typecheck or lint fail and you cannot fix: report status as ERROR
+- If a dependency is missing or blocked: report status as BLOCKED with reason
+- Prefer editing existing files over creating new ones
+- Check squads/ for existing components before creating new ones
 PROMPTEOF
 }
 
