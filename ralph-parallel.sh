@@ -8,6 +8,8 @@
 #   ./ralph-plus/ralph-parallel.sh --wave "15.1,15.3,15.4,15.5,15.6,16.2,16.3,16.4" --wave "15.2" --wave "16.1,16.5,16.6"
 #   ./ralph-plus/ralph-parallel.sh --config waves.conf
 #   ./ralph-plus/ralph-parallel.sh --wave "15.1,15.3" --dry-run
+#   ./ralph-plus/ralph-parallel.sh --analyze
+#   ./ralph-plus/ralph-parallel.sh --analyze --output waves-custom.conf
 
 set -euo pipefail
 
@@ -38,6 +40,8 @@ PARALLEL_TIMEOUT_MINUTES=${PARALLEL_TIMEOUT_MINUTES:-${CLAUDE_TIMEOUT_MINUTES:-3
 declare -a WAVES=()
 DRY_RUN=false
 SKIP_INSTALL=false
+ANALYZE_MODE=false
+ANALYZE_OUTPUT=""
 TOTAL_STORIES=0
 COMPLETED_STORIES=0
 FAILED_STORIES=0
@@ -94,6 +98,15 @@ parse_args() {
                 PARALLEL_TIMEOUT_MINUTES=$1
                 shift
                 ;;
+            --analyze)
+                ANALYZE_MODE=true
+                shift
+                ;;
+            --output)
+                shift
+                ANALYZE_OUTPUT="$1"
+                shift
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -106,8 +119,12 @@ parse_args() {
         esac
     done
 
+    if [[ "$ANALYZE_MODE" == "true" ]]; then
+        return 0
+    fi
+
     if [[ ${#WAVES[@]} -eq 0 ]]; then
-        echo -e "${RED}Error: No waves defined. Use --wave or --config.${NC}"
+        echo -e "${RED}Error: No waves defined. Use --wave, --config, or --analyze.${NC}"
         show_help
         exit 1
     fi
@@ -141,6 +158,8 @@ Options:
   --wave "id1,id2,..."    Define a wave of stories to run in parallel
                           Multiple --wave flags define sequential waves
   --config FILE           Load wave definitions from file
+  --analyze               Auto-detect dependencies and generate wave config
+  --output FILE           Output file for --analyze (default: ralph-plus/waves-auto.conf)
   --dry-run               Show execution plan without running
   --skip-install          Skip npm package pre-installation
   --max-parallel N        Max concurrent Claude instances (default: 8)
@@ -148,6 +167,10 @@ Options:
   --help                  Show this help
 
 Examples:
+  # Auto-analyze dependencies and generate wave config
+  ./ralph-plus/ralph-parallel.sh --analyze
+  ./ralph-plus/ralph-parallel.sh --analyze --output waves-custom.conf
+
   # Run 3 waves sequentially, stories within each wave run in parallel
   ./ralph-plus/ralph-parallel.sh \
     --wave "15.1,15.3,15.4,15.5,15.6,16.2,16.3,16.4" \
@@ -347,6 +370,426 @@ cleanup_parallel() {
     return 0
 }
 trap cleanup_parallel EXIT
+
+# ─── Extract file paths from a story's File List section ─────────
+# Supports 3 formats:
+#   1. Table:   | `path` | action | desc |
+#   2. Bullet:  - `path` — desc  (or under ### Created / ### Modified)
+#   3. Flat:    - `path` (ACTION - desc)
+# Returns one file path per line on stdout
+extract_story_files() {
+    local story_path=$1
+
+    if [[ ! -f "$story_path" ]]; then
+        return
+    fi
+
+    # Extract the File List section (from "## File List" until next "## " heading)
+    local in_section=false
+    local section_text=""
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^##[[:space:]]+File[[:space:]]+List ]]; then
+            in_section=true
+            continue
+        fi
+        if [[ "$in_section" == "true" ]]; then
+            # Stop at next H2 heading
+            if [[ "$line" =~ ^##[[:space:]] && ! "$line" =~ ^###[[:space:]] ]]; then
+                break
+            fi
+            section_text+="$line"$'\n'
+        fi
+    done < "$story_path"
+
+    if [[ -z "$section_text" ]]; then
+        return
+    fi
+
+    # Extract backtick-quoted paths from the section
+    # Works for all 3 formats: table cells, bullet items, flat bullets
+    echo "$section_text" | grep -oE '`[^`]+`' | tr -d '`' | grep -E '\.(ts|tsx|js|jsx|css|json|sql|md|yaml|yml|sh|mjs|cjs)$|/' | sort -u
+}
+
+# ─── Known shared files that always cause conflicts ──────────────
+KNOWN_SHARED_FILES=(
+    "package.json"
+    "layout.tsx"
+    "next.config.ts"
+    "next.config.mjs"
+    "globals.css"
+    "tsconfig.json"
+    "tailwind.config.ts"
+)
+
+# ─── Analyze dependencies between Ready stories ─────────────────
+# Populates global associative arrays for conflict data
+# Requires: STORIES_CACHE_FILE loaded
+declare -A STORY_FILES=()       # STORY_FILES[story_id]="file1\nfile2\n..."
+declare -A FILE_STORIES=()      # FILE_STORIES[filepath]="story1,story2,..."
+declare -A STORY_CONFLICTS=()   # STORY_CONFLICTS[story_id]="other1,other2,..."
+declare -A PKG_CREATOR=()       # PKG_CREATOR[package_name]="story_id"
+declare -A PKG_CONSUMER=()      # PKG_CONSUMER[story_id]="pkg1,pkg2,..."
+declare -a READY_STORY_IDS=()   # Ordered list of Ready story IDs
+
+analyze_dependencies() {
+    if [[ ! -f "${STORIES_CACHE_FILE:-}" ]]; then
+        log_parallel ERROR "Stories cache not loaded."
+        return 1
+    fi
+
+    # Get Ready stories
+    local ready_json
+    ready_json=$(jq -r '.[] | select(.status == "Ready") | .id + "\t" + .path' "$STORIES_CACHE_FILE")
+
+    if [[ -z "$ready_json" ]]; then
+        log_parallel WARN "No stories with status 'Ready' found."
+        return 1
+    fi
+
+    # Phase 1: Extract file lists for each Ready story
+    log_parallel INFO "Extracting file lists from Ready stories..."
+
+    while IFS=$'\t' read -r story_id story_path; do
+        [[ -z "$story_id" ]] && continue
+        READY_STORY_IDS+=("$story_id")
+
+        local files
+        files=$(extract_story_files "$story_path")
+        STORY_FILES["$story_id"]="$files"
+
+        # Build reverse map: file → stories
+        while IFS= read -r filepath; do
+            [[ -z "$filepath" ]] && continue
+            if [[ -n "${FILE_STORIES[$filepath]:-}" ]]; then
+                FILE_STORIES["$filepath"]="${FILE_STORIES[$filepath]},$story_id"
+            else
+                FILE_STORIES["$filepath"]="$story_id"
+            fi
+        done <<< "$files"
+
+        # Detect package creation: if story creates files under packages/X/
+        while IFS= read -r filepath; do
+            [[ -z "$filepath" ]] && continue
+            if [[ "$filepath" =~ ^squads/packages/([^/]+)/ ]]; then
+                local pkg_name="${BASH_REMATCH[1]}"
+                # Mark as creator if this is a package.json or index.ts (new package indicator)
+                if [[ "$filepath" =~ /package\.json$ || "$filepath" =~ /index\.ts$ ]]; then
+                    PKG_CREATOR["$pkg_name"]="$story_id"
+                fi
+            fi
+        done <<< "$files"
+
+    done <<< "$ready_json"
+
+    # Phase 2: Detect file conflicts (files touched by 2+ stories)
+    log_parallel INFO "Detecting file conflicts..."
+
+    for filepath in "${!FILE_STORIES[@]}"; do
+        local stories="${FILE_STORIES[$filepath]}"
+        # Check if multiple stories touch this file
+        if [[ "$stories" == *","* ]]; then
+            # Add bidirectional conflicts
+            IFS=',' read -ra conflict_stories <<< "$stories"
+            for sid in "${conflict_stories[@]}"; do
+                for other in "${conflict_stories[@]}"; do
+                    [[ "$sid" == "$other" ]] && continue
+                    if [[ -n "${STORY_CONFLICTS[$sid]:-}" ]]; then
+                        # Avoid duplicates
+                        if [[ ! ",${STORY_CONFLICTS[$sid]}," == *",$other,"* ]]; then
+                            STORY_CONFLICTS["$sid"]="${STORY_CONFLICTS[$sid]},$other"
+                        fi
+                    else
+                        STORY_CONFLICTS["$sid"]="$other"
+                    fi
+                done
+            done
+        fi
+    done
+
+    # Phase 3: Detect known shared file conflicts
+    for filepath in "${!FILE_STORIES[@]}"; do
+        local basename
+        basename=$(basename "$filepath")
+        for known in "${KNOWN_SHARED_FILES[@]}"; do
+            if [[ "$basename" == "$known" ]]; then
+                local stories="${FILE_STORIES[$filepath]}"
+                if [[ "$stories" == *","* ]]; then
+                    # Already handled in Phase 2
+                    continue
+                fi
+                # Single story touching a known shared file — flag for wave isolation
+                # (Only relevant if other stories also touch any known shared file at same path)
+                break
+            fi
+        done
+    done
+
+    # Phase 4: Detect package dependencies (story B imports @imob/X created by story A)
+    log_parallel INFO "Detecting package dependencies..."
+
+    for story_id in "${READY_STORY_IDS[@]}"; do
+        local story_path
+        story_path=$(jq -r --arg id "$story_id" '.[] | select(.id == $id) | .path' "$STORIES_CACHE_FILE")
+        [[ ! -f "$story_path" ]] && continue
+
+        # Check if story references @imob/X packages created by other stories
+        for pkg_name in "${!PKG_CREATOR[@]}"; do
+            local creator="${PKG_CREATOR[$pkg_name]}"
+            [[ "$creator" == "$story_id" ]] && continue
+
+            # Check if this story's files or Dev Notes mention @imob/pkg_name
+            if grep -q "@imob/$pkg_name" "$story_path" 2>/dev/null; then
+                if [[ -n "${PKG_CONSUMER[$story_id]:-}" ]]; then
+                    PKG_CONSUMER["$story_id"]="${PKG_CONSUMER[$story_id]},$pkg_name"
+                else
+                    PKG_CONSUMER["$story_id"]="$pkg_name"
+                fi
+
+                # Add as conflict (dependency = must be in later wave)
+                if [[ -n "${STORY_CONFLICTS[$story_id]:-}" ]]; then
+                    if [[ ! ",${STORY_CONFLICTS[$story_id]}," == *",$creator,"* ]]; then
+                        STORY_CONFLICTS["$story_id"]="${STORY_CONFLICTS[$story_id]},$creator"
+                    fi
+                else
+                    STORY_CONFLICTS["$story_id"]="$creator"
+                fi
+            fi
+        done
+    done
+
+    log_parallel INFO "Analysis complete: ${#READY_STORY_IDS[@]} stories, ${#FILE_STORIES[@]} unique files"
+}
+
+# ─── Generate waves using greedy graph coloring ─────────────────
+# Groups stories into waves so conflicting stories are in different waves.
+# Stories that depend on packages created by other stories go in later waves.
+# Populates GENERATED_WAVES array (each element = "id1,id2,..." for one wave)
+declare -a GENERATED_WAVES=()
+declare -A WAVE_REASONS=()  # WAVE_REASONS[wave_idx]="reason text"
+
+generate_waves() {
+    GENERATED_WAVES=()
+    WAVE_REASONS=()
+
+    if [[ ${#READY_STORY_IDS[@]} -eq 0 ]]; then
+        return
+    fi
+
+    # Separate stories into: those with package dependencies (must be later) and the rest
+    local -a pool=()
+    local -a deferred=()
+    local -A deferred_deps=()  # deferred story → creator story it depends on
+
+    for story_id in "${READY_STORY_IDS[@]}"; do
+        if [[ -n "${PKG_CONSUMER[$story_id]:-}" ]]; then
+            # This story depends on a package created by another Ready story
+            deferred+=("$story_id")
+            # Find which creator stories it depends on
+            IFS=',' read -ra pkgs <<< "${PKG_CONSUMER[$story_id]}"
+            local deps=""
+            for pkg in "${pkgs[@]}"; do
+                local creator="${PKG_CREATOR[$pkg]:-}"
+                if [[ -n "$creator" ]]; then
+                    if [[ -n "$deps" ]]; then
+                        deps="$deps,$creator"
+                    else
+                        deps="$creator"
+                    fi
+                fi
+            done
+            deferred_deps["$story_id"]="$deps"
+        else
+            pool+=("$story_id")
+        fi
+    done
+
+    # Greedy graph coloring for the main pool
+    local -A story_wave=()  # story_id → wave number (0-indexed)
+    local wave_count=0
+
+    for story_id in "${pool[@]}"; do
+        local conflicts="${STORY_CONFLICTS[$story_id]:-}"
+
+        # Find the earliest wave where this story has no conflicts
+        local assigned=false
+        for (( w=0; w<wave_count; w++ )); do
+            local has_conflict=false
+
+            # Check if any story already in wave w conflicts with this one
+            if [[ -n "$conflicts" ]]; then
+                IFS=',' read -ra conflict_list <<< "$conflicts"
+                for c in "${conflict_list[@]}"; do
+                    if [[ "${story_wave[$c]:-}" == "$w" ]]; then
+                        has_conflict=true
+                        break
+                    fi
+                done
+            fi
+
+            if [[ "$has_conflict" == "false" ]]; then
+                story_wave["$story_id"]=$w
+                assigned=true
+                break
+            fi
+        done
+
+        if [[ "$assigned" == "false" ]]; then
+            story_wave["$story_id"]=$wave_count
+            wave_count=$((wave_count + 1))
+        fi
+    done
+
+    # Build wave arrays from assignments
+    local -a wave_contents=()
+    for (( w=0; w<wave_count; w++ )); do
+        wave_contents[$w]=""
+    done
+
+    for story_id in "${pool[@]}"; do
+        local w="${story_wave[$story_id]}"
+        if [[ -n "${wave_contents[$w]}" ]]; then
+            wave_contents[$w]="${wave_contents[$w]},$story_id"
+        else
+            wave_contents[$w]="$story_id"
+        fi
+    done
+
+    # Add main pool waves
+    for (( w=0; w<wave_count; w++ )); do
+        if [[ -n "${wave_contents[$w]}" ]]; then
+            GENERATED_WAVES+=("${wave_contents[$w]}")
+            if [[ $w -eq 0 ]]; then
+                WAVE_REASONS[$w]="Independent stories (no file conflicts)"
+            else
+                WAVE_REASONS[$w]="Separated due to shared file conflicts"
+            fi
+        fi
+    done
+
+    # Handle deferred stories (package dependency) — add them in subsequent waves
+    if [[ ${#deferred[@]} -gt 0 ]]; then
+        # Ensure deferred stories go AFTER all their dependency creators
+        local deferred_wave_idx=${#GENERATED_WAVES[@]}
+        local deferred_list=""
+
+        for story_id in "${deferred[@]}"; do
+            if [[ -n "$deferred_list" ]]; then
+                deferred_list="$deferred_list,$story_id"
+            else
+                deferred_list="$story_id"
+            fi
+        done
+
+        GENERATED_WAVES+=("$deferred_list")
+        WAVE_REASONS[$deferred_wave_idx]="Package dependencies — requires packages created in earlier waves"
+    fi
+
+    # Edge case: if pool was empty but deferred had items, the waves are already set
+    # Edge case: if no conflicts at all, everything is in wave 0 (single wave)
+}
+
+# ─── Show dependency analysis report ─────────────────────────────
+show_analysis_report() {
+    local output_file="${ANALYZE_OUTPUT:-}"
+
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}  RALPH+ Auto Dependency Analyzer${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
+    echo ""
+
+    # Section 1: Stories analyzed
+    echo -e "${WHITE}Stories Analyzed (${#READY_STORY_IDS[@]} Ready):${NC}"
+    for story_id in "${READY_STORY_IDS[@]}"; do
+        local title
+        title=$(jq -r --arg id "$story_id" '.[] | select(.id == $id) | .title' "$STORIES_CACHE_FILE")
+        local file_count
+        file_count=$(echo "${STORY_FILES[$story_id]}" | grep -c '.' 2>/dev/null || echo 0)
+        echo -e "  ${GREEN}$story_id${NC}: $title ${CYAN}($file_count files)${NC}"
+    done
+    echo ""
+
+    # Section 2: Conflicts detected
+    local has_conflicts=false
+    for story_id in "${READY_STORY_IDS[@]}"; do
+        if [[ -n "${STORY_CONFLICTS[$story_id]:-}" ]]; then
+            has_conflicts=true
+            break
+        fi
+    done
+
+    if [[ "$has_conflicts" == "true" ]]; then
+        echo -e "${YELLOW}Conflicts Detected:${NC}"
+
+        # Show shared files
+        for filepath in "${!FILE_STORIES[@]}"; do
+            local stories="${FILE_STORIES[$filepath]}"
+            if [[ "$stories" == *","* ]]; then
+                echo -e "  ${RED}$filepath${NC}"
+                echo -e "    touched by: ${WHITE}$stories${NC}"
+            fi
+        done
+
+        # Show package dependencies
+        for story_id in "${!PKG_CONSUMER[@]}"; do
+            local pkgs="${PKG_CONSUMER[$story_id]}"
+            IFS=',' read -ra pkg_list <<< "$pkgs"
+            for pkg in "${pkg_list[@]}"; do
+                local creator="${PKG_CREATOR[$pkg]:-unknown}"
+                echo -e "  ${YELLOW}Story $story_id${NC} depends on ${WHITE}@imob/$pkg${NC} (created by story ${WHITE}$creator${NC})"
+            done
+        done
+        echo ""
+    else
+        echo -e "${GREEN}No conflicts detected — all stories are independent.${NC}"
+        echo ""
+    fi
+
+    # Section 3: Suggested waves
+    echo -e "${WHITE}Suggested Waves (${#GENERATED_WAVES[@]}):${NC}"
+    echo ""
+
+    for i in "${!GENERATED_WAVES[@]}"; do
+        local wave_num=$((i + 1))
+        local wave_stories="${GENERATED_WAVES[$i]}"
+        local reason="${WAVE_REASONS[$i]:-}"
+
+        IFS=',' read -ra ids <<< "$wave_stories"
+        echo -e "  ${CYAN}Wave $wave_num${NC} (${#ids[@]} stories) — ${reason}"
+
+        for sid in "${ids[@]}"; do
+            local title
+            title=$(jq -r --arg id "$sid" '.[] | select(.id == $id) | .title' "$STORIES_CACHE_FILE")
+            echo -e "    ${GREEN}$sid${NC}: $title"
+        done
+        echo ""
+    done
+
+    # Section 4: Write .conf file
+    local conf_file="${output_file:-ralph-plus/waves-auto.conf}"
+
+    {
+        echo "# RALPH+ Auto-Generated Wave Configuration"
+        echo "# Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "# Stories: ${#READY_STORY_IDS[@]} Ready"
+        echo "#"
+        for i in "${!GENERATED_WAVES[@]}"; do
+            local wave_num=$((i + 1))
+            local reason="${WAVE_REASONS[$i]:-}"
+            echo "# Wave $wave_num — $reason"
+            echo "${GENERATED_WAVES[$i]}"
+        done
+    } > "$conf_file"
+
+    echo -e "${GREEN}Config written to: $conf_file${NC}"
+    echo ""
+    echo -e "${WHITE}To execute:${NC}"
+    echo -e "  ${CYAN}./ralph-plus/ralph-parallel.sh --config $conf_file${NC}"
+    echo -e "  ${CYAN}./ralph-plus/ralph-parallel.sh --config $conf_file --dry-run${NC}"
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
+}
 
 # ─── Find story JSON by ID (uses pre-loaded cache file) ─────────
 get_story_by_id() {
@@ -787,6 +1230,14 @@ main() {
 
     # Load stories cache (must be called in main scope, not subshell)
     load_stories_cache
+
+    # Analyze mode: detect dependencies and generate wave config
+    if [[ "$ANALYZE_MODE" == "true" ]]; then
+        analyze_dependencies
+        generate_waves
+        show_analysis_report
+        exit 0
+    fi
 
     # Show execution plan
     show_execution_plan
